@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DeepTutor</string>
+    <string name="menu_refresh">刷新</string>
+    <string name="menu_url">选地址</string>
+    <string name="menu_immersive">全屏开/关</string>
+    <string name="url_local">本机 127.0.0.1</string>
+    <string name="url_wifi">WiFi 局域网</string>
+    <string name="url_tailscale">Tailscale</string>
+    <string name="url_custom">自定义…</string>
+    <string name="custom_hint">输入完整 URL，例如 http://192.168.31.137:3782</string>
+    <string name="custom_title">自定义地址</string>
+    <string name="ok">打开</string>
+    <string name="cancel">取消</string>
+</resources>

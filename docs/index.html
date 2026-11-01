@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#1565C0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <title>DeepTutor</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #000; color: #fff; font-family: system-ui, -apple-system, "PingFang SC", "Noto Sans SC", sans-serif; }
+    #picker {
+      position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; padding: 24px; background: linear-gradient(160deg, #0d47a1, #000);
+      z-index: 10;
+    }
+    #picker h1 { margin: 0 0 8px; font-size: 1.6rem; }
+    #picker p { margin: 0 0 12px; opacity: .75; font-size: .9rem; text-align: center; max-width: 360px; }
+    button, .btn {
+      width: min(360px, 100%); padding: 14px 16px; border: 0; border-radius: 12px;
+      background: #1E88E5; color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer;
+    }
+    button.secondary { background: #37474f; }
+    button:active { transform: scale(.98); }
+    #customRow { width: min(360px, 100%); display: flex; gap: 8px; }
+    #customRow input {
+      flex: 1; padding: 12px; border-radius: 12px; border: 1px solid #546e7a; background: #102027; color: #fff;
+    }
+    #frameWrap { position: fixed; inset: 0; display: none; background: #000; }
+    #frameWrap.active { display: block; }
+    iframe { border: 0; width: 100%; height: 100%; background: #000; }
+    #toolbar {
+      position: fixed; top: 8px; right: 8px; z-index: 20; display: none; gap: 6px;
+      background: rgba(30,136,229,.85); border-radius: 20px; padding: 4px;
+    }
+    #toolbar.show { display: flex; }
+    #toolbar button { width: auto; padding: 8px 12px; border-radius: 16px; font-size: .85rem; }
+    .hint { font-size: .75rem; opacity: .6; margin-top: 16px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div id="picker">
+    <h1>DeepTutor</h1>
+    <p>选一个地址打开。装到桌面（添加到主屏幕）后可接近全屏，少挡内容。</p>
+    <button type="button" data-url="http://100.64.233.119:3782">Tailscale<br/><small>100.64.233.119:3782</small></button>
+    <button type="button" class="secondary" data-url="http://192.168.31.137:3782">WiFi 局域网<br/><small>192.168.31.137:3782</small></button>
+    <button type="button" class="secondary" data-url="http://127.0.0.1:3782">本机<br/><small>127.0.0.1:3782</small></button>
+    <div id="customRow">
+      <input id="custom" type="url" placeholder="自定义 http://IP:端口" />
+      <button type="button" id="goCustom" style="width:auto;padding:12px 16px">打开</button>
+    </div>
+    <p class="hint">说明：浏览器安全策略可能拦局域网 iframe；若打不开，请用下方「直接跳转」或安装 Android APK。<br/>
+      <a id="direct" href="#" style="color:#90caf9">直接跳转上次地址</a>
+    </p>
+  </div>
+
+  <div id="toolbar">
+    <button type="button" id="btnBack">返回选址</button>
+    <button type="button" id="btnReload">刷新</button>
+  </div>
+  <div id="frameWrap">
+    <iframe id="frame" allow="fullscreen; clipboard-read; clipboard-write" allowfullscreen></iframe>
+  </div>
+
+  <script>
+    const KEY = 'deeptutor_pwa_url';
+    const DEFAULT = 'http://100.64.233.119:3782';
+    const picker = document.getElementById('picker');
+    const frameWrap = document.getElementById('frameWrap');
+    const frame = document.getElementById('frame');
+    const toolbar = document.getElementById('toolbar');
+    const custom = document.getElementById('custom');
+    const direct = document.getElementById('direct');
+
+    let hideTimer;
+    function showToolbar() {
+      toolbar.classList.add('show');
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => toolbar.classList.remove('show'), 3000);
+    }
+
+    function normalize(u) {
+      u = (u || '').trim();
+      if (!u) return '';
+      if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+      return u;
+    }
+
+    function openUrl(url, mode) {
+      url = normalize(url);
+      if (!url) return;
+      localStorage.setItem(KEY, url);
+      direct.href = url;
+      // Prefer navigate for LAN/cleartext reliability from phone browser
+      if (mode === 'navigate' || location.protocol === 'https:') {
+        // From https Pages, mixed content blocks http iframe → navigate instead
+        location.href = url;
+        return;
+      }
+      picker.style.display = 'none';
+      frameWrap.classList.add('active');
+      frame.src = url;
+      showToolbar();
+      // try request fullscreen
+      const el = document.documentElement;
+      (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el);
+    }
+
+    document.querySelectorAll('button[data-url]').forEach(btn => {
+      btn.addEventListener('click', () => openUrl(btn.dataset.url, 'navigate'));
+    });
+    document.getElementById('goCustom').addEventListener('click', () => openUrl(custom.value, 'navigate'));
+    document.getElementById('btnBack').addEventListener('click', () => {
+      frame.src = 'about:blank';
+      frameWrap.classList.remove('active');
+      picker.style.display = 'flex';
+      toolbar.classList.remove('show');
+      if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    });
+    document.getElementById('btnReload').addEventListener('click', () => {
+      try { frame.contentWindow.location.reload(); } catch (e) { frame.src = frame.src; }
+      showToolbar();
+    });
+    document.body.addEventListener('click', showToolbar);
+
+    const last = localStorage.getItem(KEY) || DEFAULT;
+    custom.value = last;
+    direct.href = last;
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>
