@@ -35,3 +35,9 @@ https://wangm9277-a11y.github.io/deeptutor-launcher/
 
 - 允许明文 HTTP（局域网 / Tailscale）
 - JavaScript、DOM Storage 已开
+
+## CI 说明
+
+本仓库 OAuth 令牌缺少 `workflow` 范围，无法直接推送 `.github/workflows/`。
+工作流模板在 `ci/build-apk.yml`：在 GitHub 网页上把它复制到 `.github/workflows/build-apk.yml` 即可启用 Actions 自动打包。
+当前 v1.0.0 Release 的 APK 由本机构建上传。
