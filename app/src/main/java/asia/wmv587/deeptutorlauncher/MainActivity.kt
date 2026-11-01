@@ -3,6 +3,8 @@ package asia.wmv587.deeptutorlauncher
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -64,6 +66,9 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Edge-to-edge before setContentView so first frame already fills the cutout.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        enableCutoutEdgeToEdge()
         setContentView(R.layout.activity_main)
 
         root = findViewById(R.id.root)
@@ -121,7 +126,7 @@ class MainActivity : AppCompatActivity() {
             ) {
                 Toast.makeText(
                     this@MainActivity,
-                    "加载失败: ${description ?: "网络错误"}，点小按钮换地址",
+                    "加载失败: ${description ?: "网络错误"}，点设置按钮换地址",
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -200,12 +205,12 @@ class MainActivity : AppCompatActivity() {
             }
             Toast.makeText(
                 this,
-                if (immersive) "已开全屏（系统栏会藏）" else "已关全屏（系统栏常显）",
+                if (immersive) "已开全屏（铺满到顶，含刘海）" else "已关全屏（系统栏常显）",
                 Toast.LENGTH_SHORT
             ).show()
         }
 
-        // Drag on the FAB itself; short tap toggles the menu.
+        // Drag on the settings button; short tap toggles the menu.
         btnFab.setOnTouchListener(object : View.OnTouchListener {
             private var downRawX = 0f
             private var downRawY = 0f
@@ -394,17 +399,55 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Draw into display cutout / notch so content can go to the absolute top. */
+    private fun enableCutoutEdgeToEdge() {
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val lp = window.attributes
+            lp.layoutInDisplayCutoutMode =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                } else {
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            window.attributes = lp
+        }
+    }
+
+    @Suppress("DEPRECATION")
     private fun applyImmersive(enable: Boolean) {
-        WindowCompat.setDecorFitsSystemWindows(window, !enable)
+        // Always edge-to-edge so hiding bars actually expands content to the top,
+        // instead of leaving a black status-bar-sized gap.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        enableCutoutEdgeToEdge()
+
         val controller = WindowInsetsControllerCompat(window, window.decorView)
         if (enable) {
             controller.hide(WindowInsetsCompat.Type.systemBars())
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            // Legacy flags help some OEM skins (vivo/OPPO/etc.) actually expand layout.
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                )
+            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
         } else {
             controller.show(WindowInsetsCompat.Type.systemBars())
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                )
         }
     }
 
