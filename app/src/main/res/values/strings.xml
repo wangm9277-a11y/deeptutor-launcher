@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DeepTutor</string>
+    <string name="menu_fab">打开菜单</string>
     <string name="menu_refresh">刷新</string>
     <string name="menu_url">选地址</string>
     <string name="menu_immersive">全屏开/关</string>

@@ -13,8 +13,8 @@
 
 1. 打开本仓库 **Actions** → 最新成功构建 → 下载 `deeptutor-debug-apk`，或到 **Releases** 下载 APK。
 2. 手机允许「未知来源 / 安装未知应用」。
-3. 安装后打开 **DeepTutor**，右上角选 Tailscale / WiFi / 自定义。
-4. 全屏会自动藏系统栏；点一下屏幕可临时显示菜单（刷新 / 选地址 / 全屏开关）。
+3. 安装后打开 **DeepTutor**。右上角是一个**小圆按钮**：点一下展开菜单（刷新 / 选地址 / 全屏），再点或点屏幕空白处收起；**按住拖动**可挪位置，下次打开还在原地。
+4. 全屏会自动藏系统栏；点一下屏幕可临时显示小按钮（约 3.5 秒后淡出）。
 
 本地构建（需 JDK 17 + Android SDK）：
 
@@ -40,4 +40,4 @@ https://wangm9277-a11y.github.io/deeptutor-launcher/
 
 本仓库 OAuth 令牌缺少 `workflow` 范围，无法直接推送 `.github/workflows/`。
 工作流模板在 `ci/build-apk.yml`：在 GitHub 网页上把它复制到 `.github/workflows/build-apk.yml` 即可启用 Actions 自动打包。
-当前 v1.0.0 Release 的 APK 由本机构建上传。
+当前 Release APK 由本机构建上传（最新见 Releases）。

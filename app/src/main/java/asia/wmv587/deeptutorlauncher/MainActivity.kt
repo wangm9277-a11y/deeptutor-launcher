@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -24,6 +25,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import kotlin.math.abs
 
 class MainActivity : AppCompatActivity() {
 
@@ -31,6 +33,8 @@ class MainActivity : AppCompatActivity() {
         private const val PREFS = "deeptutor_prefs"
         private const val KEY_URL = "last_url"
         private const val KEY_IMMERSIVE = "immersive"
+        private const val KEY_FAB_X = "fab_x"
+        private const val KEY_FAB_Y = "fab_y"
         const val URL_LOCAL = "http://127.0.0.1:3782"
         const val URL_WIFI = "http://192.168.31.137:3782"
         const val URL_TAILSCALE = "http://100.64.233.119:3782"
@@ -38,17 +42,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var webView: WebView
-    private lateinit var floatingMenu: LinearLayout
+    private lateinit var fabHost: FrameLayout
+    private lateinit var menuPanel: LinearLayout
+    private lateinit var btnFab: ImageButton
     private lateinit var root: FrameLayout
     private val hideHandler = Handler(Looper.getMainLooper())
     private var immersive = true
+    private var menuExpanded = false
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
     private val hideMenuRunnable = Runnable {
         if (immersive) {
-            floatingMenu.animate().alpha(0f).setDuration(200).withEndAction {
-                floatingMenu.visibility = View.GONE
+            collapseMenu(animate = false)
+            fabHost.animate().alpha(0f).setDuration(200).withEndAction {
+                fabHost.visibility = View.GONE
             }.start()
         }
     }
@@ -60,14 +68,17 @@ class MainActivity : AppCompatActivity() {
 
         root = findViewById(R.id.root)
         webView = findViewById(R.id.webView)
-        floatingMenu = findViewById(R.id.floatingMenu)
+        fabHost = findViewById(R.id.fabHost)
+        menuPanel = findViewById(R.id.menuPanel)
+        btnFab = findViewById(R.id.btnFab)
 
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         immersive = prefs.getBoolean(KEY_IMMERSIVE, true)
         val startUrl = prefs.getString(KEY_URL, URL_TAILSCALE) ?: URL_TAILSCALE
 
         setupWebView()
-        setupMenu()
+        setupFab()
+        restoreFabPosition()
         applyImmersive(immersive)
 
         webView.loadUrl(startUrl)
@@ -110,7 +121,7 @@ class MainActivity : AppCompatActivity() {
             ) {
                 Toast.makeText(
                     this@MainActivity,
-                    "加载失败: ${description ?: "网络错误"}，点右上角换地址",
+                    "加载失败: ${description ?: "网络错误"}，点小按钮换地址",
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -125,7 +136,8 @@ class MainActivity : AppCompatActivity() {
                 customView = view
                 customViewCallback = callback
                 webView.visibility = View.GONE
-                floatingMenu.visibility = View.GONE
+                fabHost.visibility = View.GONE
+                collapseMenu(animate = false)
                 root.addView(
                     view,
                     FrameLayout.LayoutParams(
@@ -142,37 +154,46 @@ class MainActivity : AppCompatActivity() {
                 customViewCallback?.onCustomViewHidden()
                 customViewCallback = null
                 webView.visibility = View.VISIBLE
-                showMenuTemporarily()
+                showFabTemporarily()
                 applyImmersive(immersive)
             }
         }
 
         webView.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
-                showMenuTemporarily()
+                if (menuExpanded) {
+                    collapseMenu(animate = true)
+                }
+                showFabTemporarily()
             }
             false
         }
     }
 
-    private fun setupMenu() {
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupFab() {
+        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
+
         findViewById<ImageButton>(R.id.btnRefresh).setOnClickListener {
             webView.reload()
-            showMenuTemporarily()
+            collapseMenu(animate = true)
+            showFabTemporarily()
         }
         findViewById<ImageButton>(R.id.btnUrl).setOnClickListener {
+            collapseMenu(animate = true)
             showUrlPicker()
-            showMenuTemporarily()
+            showFabTemporarily()
         }
         findViewById<ImageButton>(R.id.btnImmersive).setOnClickListener {
             immersive = !immersive
             getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putBoolean(KEY_IMMERSIVE, immersive).apply()
             applyImmersive(immersive)
+            collapseMenu(animate = true)
             if (!immersive) {
-                floatingMenu.animate().cancel()
-                floatingMenu.alpha = 1f
-                floatingMenu.visibility = View.VISIBLE
+                fabHost.animate().cancel()
+                fabHost.alpha = 1f
+                fabHost.visibility = View.VISIBLE
                 hideHandler.removeCallbacks(hideMenuRunnable)
             } else {
                 scheduleHideMenu()
@@ -183,6 +204,138 @@ class MainActivity : AppCompatActivity() {
                 Toast.LENGTH_SHORT
             ).show()
         }
+
+        // Drag on the FAB itself; short tap toggles the menu.
+        btnFab.setOnTouchListener(object : View.OnTouchListener {
+            private var downRawX = 0f
+            private var downRawY = 0f
+            private var startX = 0f
+            private var startY = 0f
+            private var dragging = false
+
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
+                val lp = fabHost.layoutParams as FrameLayout.LayoutParams
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        downRawX = event.rawX
+                        downRawY = event.rawY
+                        startX = fabHost.x
+                        startY = fabHost.y
+                        dragging = false
+                        if (lp.gravity != 0) {
+                            fabHost.x = fabHost.x
+                            fabHost.y = fabHost.y
+                            lp.gravity = 0
+                            lp.leftMargin = 0
+                            lp.topMargin = 0
+                            lp.rightMargin = 0
+                            lp.bottomMargin = 0
+                            fabHost.layoutParams = lp
+                        }
+                        showFabTemporarily()
+                        return true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = event.rawX - downRawX
+                        val dy = event.rawY - downRawY
+                        if (!dragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                            dragging = true
+                            collapseMenu(animate = false)
+                        }
+                        if (dragging) {
+                            val parentW = root.width.toFloat()
+                            val parentH = root.height.toFloat()
+                            val w = fabHost.width.toFloat()
+                            val h = fabHost.height.toFloat()
+                            var nx = startX + dx
+                            var ny = startY + dy
+                            nx = nx.coerceIn(0f, (parentW - w).coerceAtLeast(0f))
+                            ny = ny.coerceIn(0f, (parentH - h).coerceAtLeast(0f))
+                            fabHost.x = nx
+                            fabHost.y = ny
+                            showFabTemporarily()
+                        }
+                        return true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        if (dragging) {
+                            saveFabPosition(fabHost.x, fabHost.y)
+                        } else {
+                            if (menuExpanded) {
+                                collapseMenu(animate = true)
+                            } else {
+                                expandMenu()
+                            }
+                        }
+                        showFabTemporarily()
+                        return true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        if (dragging) {
+                            saveFabPosition(fabHost.x, fabHost.y)
+                        }
+                        showFabTemporarily()
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+    }
+
+    private fun expandMenu() {
+        menuExpanded = true
+        menuPanel.alpha = 0f
+        menuPanel.visibility = View.VISIBLE
+        menuPanel.animate().alpha(1f).setDuration(150).start()
+        btnFab.contentDescription = getString(R.string.menu_fab) + "（已展开）"
+    }
+
+    private fun collapseMenu(animate: Boolean) {
+        if (!menuExpanded && menuPanel.visibility != View.VISIBLE) return
+        menuExpanded = false
+        btnFab.contentDescription = getString(R.string.menu_fab)
+        if (animate) {
+            menuPanel.animate().alpha(0f).setDuration(120).withEndAction {
+                menuPanel.visibility = View.GONE
+                menuPanel.alpha = 1f
+            }.start()
+        } else {
+            menuPanel.animate().cancel()
+            menuPanel.visibility = View.GONE
+            menuPanel.alpha = 1f
+        }
+    }
+
+    private fun restoreFabPosition() {
+        val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.contains(KEY_FAB_X) || !prefs.contains(KEY_FAB_Y)) return
+        val x = prefs.getFloat(KEY_FAB_X, -1f)
+        val y = prefs.getFloat(KEY_FAB_Y, -1f)
+        if (x < 0f || y < 0f) return
+        fabHost.post {
+            val lp = fabHost.layoutParams as FrameLayout.LayoutParams
+            lp.gravity = 0
+            lp.leftMargin = 0
+            lp.topMargin = 0
+            lp.rightMargin = 0
+            lp.bottomMargin = 0
+            fabHost.layoutParams = lp
+            val parentW = root.width.toFloat()
+            val parentH = root.height.toFloat()
+            val w = fabHost.width.toFloat()
+            val h = fabHost.height.toFloat()
+            fabHost.x = x.coerceIn(0f, (parentW - w).coerceAtLeast(0f))
+            fabHost.y = y.coerceIn(0f, (parentH - h).coerceAtLeast(0f))
+        }
+    }
+
+    private fun saveFabPosition(x: Float, y: Float) {
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putFloat(KEY_FAB_X, x)
+            .putFloat(KEY_FAB_Y, y)
+            .apply()
     }
 
     private fun showUrlPicker() {
@@ -235,7 +388,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveUrl(url: String) {
-        // Don't persist chrome/error pages
         if (url.startsWith("http://") || url.startsWith("https://")) {
             getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putString(KEY_URL, url).apply()
@@ -256,10 +408,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showMenuTemporarily() {
-        floatingMenu.animate().cancel()
-        floatingMenu.alpha = 1f
-        floatingMenu.visibility = View.VISIBLE
+    private fun showFabTemporarily() {
+        fabHost.animate().cancel()
+        fabHost.alpha = 1f
+        fabHost.visibility = View.VISIBLE
         scheduleHideMenu()
     }
 
@@ -276,6 +428,7 @@ class MainActivity : AppCompatActivity() {
             customView != null -> {
                 (webView.webChromeClient as? WebChromeClient)?.onHideCustomView()
             }
+            menuExpanded -> collapseMenu(animate = true)
             webView.canGoBack() -> webView.goBack()
             else -> super.onBackPressed()
         }
